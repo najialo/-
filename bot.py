@@ -18,7 +18,7 @@ GROK_API_URL = "https://api.x.ai/v1/chat/completions"
 def init_db():
     conn = sqlite3.connect(DATABASE_PATH)
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS alerts (id INTEGER PRIMARY KEY, chat_id INTEGER, symbol TEXT, price REAL, type TEXT, active INTEGER DEFAULT 1)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS alerts (id INTEGER PRIMARY KEY, chat_id INTEGER, symbol TEXT, price REAL, alert_type TEXT, active INTEGER DEFAULT 1)''')
     conn.commit()
     conn.close()
 
@@ -124,15 +124,15 @@ def check_alerts():
         try:
             conn = sqlite3.connect(DATABASE_PATH)
             c = conn.cursor()
-            c.execute('SELECT id, chat_id, symbol, price, type FROM alerts WHERE active = 1')
+            c.execute('SELECT id, chat_id, symbol, price, alert_type FROM alerts WHERE active = 1')
             
-            for alert_id, chat_id, symbol, price, type in c.fetchall():
+            for alert_id, chat_id, symbol, price, alert_type in c.fetchall():
                 current = get_price(symbol)
                 if current:
-                    if type == "above" and current >= price:
+                    if alert_type == "above" and current >= price:
                         send(chat_id, f"🔔 {symbol} وصل {current:.2f}")
                         c.execute('UPDATE alerts SET active = 0 WHERE id = ?', (alert_id,))
-                    elif type == "below" and current <= price:
+                    elif alert_type == "below" and current <= price:
                         send(chat_id, f"🔔 {symbol} وصل {current:.2f}")
                         c.execute('UPDATE alerts SET active = 0 WHERE id = ?', (alert_id,))
             
@@ -157,11 +157,11 @@ def handle(chat_id, text):
         
         if numbers:
             price = float(numbers[0])
-            type = "below" if any(w in t for w in ["نزل", "تحت"]) else "above"
+            alert_type = "below" if any(w in t for w in ["نزل", "تحت"]) else "above"
             
             conn = sqlite3.connect(DATABASE_PATH)
             c = conn.cursor()
-            c.execute('INSERT INTO alerts (chat_id, symbol, price, type) VALUES (?, ?, ?, ?)', (chat_id, symbol, price, type))
+            c.execute('INSERT INTO alerts (chat_id, symbol, price, alert_type) VALUES (?, ?, ?, ?)', (chat_id, symbol, price, alert_type))
             conn.commit()
             conn.close()
             
@@ -179,10 +179,6 @@ def handle(chat_id, text):
     if "فضة" in t:
         p = get_price("XAGUSD")
         if p:
-            if any(w in t for w in ["تحليل", "توقع", "توصية", "طلع", "نزل"]):
-                reply = ask_grok(f"حلل الفضة XAGUSD سعرها الحالي {p} دولار. هل ستطلع أم تنزل؟ أعط توصية واضحة.")
-                if reply:
-                    return f"📊 **تحليل الفضة**\n💰 السعر: {p:.2f}\n\n{reply}"
             return f"💰 الفضة: {p:.2f} دولار"
     
     if "بيتكوين" in t or "btc" in t.lower():
@@ -212,12 +208,12 @@ def handle(chat_id, text):
     if t == "/alerts":
         conn = sqlite3.connect(DATABASE_PATH)
         c = conn.cursor()
-        c.execute('SELECT symbol, price, type FROM alerts WHERE chat_id = ? AND active = 1', (chat_id,))
+        c.execute('SELECT symbol, price, alert_type FROM alerts WHERE chat_id = ? AND active = 1', (chat_id,))
         alerts = c.fetchall()
         conn.close()
         
         if alerts:
-            return "🔔 تنبيهاتك:\n" + "\n".join([f"• {s} عند {p} ({t})" for s, p, t in alerts])
+            return "🔔 تنبيهاتك:\n" + "\n".join([f"• {s} عند {p}" for s, p, t in alerts])
         return "لا توجد تنبيهات"
     
     if t in ["/start", "/help"]:
