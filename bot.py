@@ -12,7 +12,7 @@ TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
 DATABASE_PATH = "trading_bot.db"
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent"
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
 
 def init_database():
     conn = sqlite3.connect(DATABASE_PATH)
@@ -88,15 +88,6 @@ def get_price(symbol):
             "FLOKIUSD": "FLOKIUSDT", "FLOKI": "FLOKIUSDT",
             "BONKUSD": "BONKUSDT", "BONK": "BONKUSDT",
             "WIFUSD": "WIFUSDT", "WIF": "WIFUSDT",
-            "JUPUSD": "JUPUSDT", "JUP": "JUPUSDT",
-            "PYTHUSD": "PYTHUSDT", "PYTH": "PYTHUSDT",
-            "SEIUSD": "SEIUSDT", "SEI": "SEIUSDT",
-            "TIAUSD": "TIAUSDT", "TIA": "TIAUSDT",
-            "STRKUSD": "STRKUSDT", "STRK": "STRKUSDT",
-            "ENAUSD": "ENAUSDT", "ENA": "ENAUSDT",
-            "ETHFIUSD": "ETHFIUSDT", "ETHFI": "ETHFIUSDT",
-            "ORDIUSD": "ORDIUSDT", "ORDI": "ORDIUSDT",
-            "SATSUSD": "1000SATSUSDT", "SATS": "1000SATSUSDT",
         }
         
         if symbol in binance_map:
@@ -108,14 +99,16 @@ def get_price(symbol):
     return None
 
 def ask_gemini(text):
-    """بيرد على أي سؤال"""
     if not GEMINI_API_KEY:
-        return "عذراً، لا يوجد مفتاح Gemini. أضفه في Render"
+        return "عذراً، لا يوجد مفتاح Gemini"
     
     try:
         response = requests.post(
             GEMINI_API_URL,
-            headers={"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"},
+            headers={
+                "Authorization": f"Bearer {GEMINI_API_KEY}",
+                "Content-Type": "application/json"
+            },
             json={
                 "system_instruction": {"parts": [{"text": "أنت مساعد ذكي. أجب على أي سؤال بالعربية باختصار."}]},
                 "contents": [{"role": "user", "parts": [{"text": text}]}],
@@ -159,9 +152,7 @@ def check_alerts():
         time.sleep(10)
 
 def handle(chat_id, text):
-    text_lower = text.lower()
     
-    # أسعار الذهب والفضة
     if "ذهب" in text or text == "/gold":
         price = get_price("XAUUSD")
         if price:
@@ -172,7 +163,13 @@ def handle(chat_id, text):
         if price:
             return f"💰 **سعر الفضة:** {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
     
-    # تنبيه
+    if text.startswith("/price"):
+        symbol = text.replace("/price", "").strip()
+        if symbol:
+            price = get_price(symbol)
+            if price:
+                return f"💰 **{symbol.upper()}:** {price:.2f} دولار"
+    
     if text.startswith("/alert"):
         parts = text.replace("/alert", "").strip().split()
         if len(parts) >= 2:
@@ -218,12 +215,11 @@ def handle(chat_id, text):
 
 💬 **أو اسألني أي سؤال!**"""
     
-    # أي سؤال → Gemini
     reply = ask_gemini(text)
     if reply:
         return reply
     
-    return "حدث خطأ. تأكد من GEMINI_API_KEY"
+    return "عذراً، حدث خطأ"
 
 def send_message(chat_id, text):
     try:
