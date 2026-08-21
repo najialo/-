@@ -21,27 +21,21 @@ def init_database():
     conn.commit()
     conn.close()
 
-# ==================== الأسعار ====================
 def get_price(symbol):
     symbol = symbol.upper().strip()
     
-    # الذهب
     if symbol in ["XAUUSD", "GOLD", "ذهب", "الذهب"]:
         try:
             r = requests.get("https://api.gold-api.com/price/XAU", timeout=5)
             return float(r.json()["price"])
         except:
             pass
-    
-    # الفضة
     elif symbol in ["XAGUSD", "SILVER", "فضة", "الفضة"]:
         try:
             r = requests.get("https://api.gold-api.com/price/XAG", timeout=5)
             return float(r.json()["price"])
         except:
             pass
-    
-    # العملات الأجنبية
     elif len(symbol) == 6 and symbol.isalpha():
         try:
             r = requests.get(f"https://api.frankfurter.app/latest?from={symbol[:3]}&to={symbol[3:]}", timeout=5)
@@ -49,7 +43,6 @@ def get_price(symbol):
         except:
             pass
     
-    # العملات الرقمية من Binance
     try:
         binance_map = {
             "BTCUSD": "BTCUSDT", "BTC": "BTCUSDT", "بيتكوين": "BTCUSDT",
@@ -114,30 +107,32 @@ def get_price(symbol):
     
     return None
 
-# ==================== Gemini ====================
 def ask_gemini(text):
+    """بيرد على أي سؤال"""
     if not GEMINI_API_KEY:
-        return None
+        return "عذراً، لا يوجد مفتاح Gemini. أضفه في Render"
     
     try:
         response = requests.post(
             GEMINI_API_URL,
             headers={"x-goog-api-key": GEMINI_API_KEY, "Content-Type": "application/json"},
             json={
-                "system_instruction": {"parts": [{"text": "أنت مساعد ذكي تجيب على أي سؤال بالعربية. كن مختصراً ومفيداً."}]},
+                "system_instruction": {"parts": [{"text": "أنت مساعد ذكي. أجب على أي سؤال بالعربية باختصار."}]},
                 "contents": [{"role": "user", "parts": [{"text": text}]}],
             },
             timeout=30,
         )
         data = response.json()
         
-        if response.status_code == 200:
+        if response.status_code == 200 and "candidates" in data:
             return data["candidates"][0]["content"]["parts"][0]["text"]
-        return None
-    except:
+        else:
+            print(f"Gemini error: {data}")
+            return None
+    except Exception as e:
+        print(f"Gemini exception: {e}")
         return None
 
-# ==================== التنبيهات ====================
 def check_alerts():
     while True:
         try:
@@ -163,33 +158,22 @@ def check_alerts():
             pass
         time.sleep(10)
 
-# ==================== الأوامر ====================
 def handle(chat_id, text):
+    text_lower = text.lower()
     
-    # أوامر الأسعار
-    if text.startswith("/price") or text.startswith("سعر"):
-        if text.startswith("/price"):
-            symbol = text.replace("/price", "").strip()
-        else:
-            symbol = text.replace("سعر", "").strip()
-        
-        if symbol:
-            price = get_price(symbol)
-            if price:
-                return f"💰 **{symbol.upper()}:** {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
-            return f"❌ لا يمكن الحصول على سعر {symbol}"
-    
-    elif text == "/gold" or "ذهب" in text:
+    # أسعار الذهب والفضة
+    if "ذهب" in text or text == "/gold":
         price = get_price("XAUUSD")
         if price:
-            return f"📊 **الذهب**\n\n💰 **السعر:** {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
+            return f"💰 **سعر الذهب:** {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
     
-    elif text == "/silver" or "فضة" in text:
+    if "فضة" in text or text == "/silver":
         price = get_price("XAGUSD")
         if price:
-            return f"📊 **الفضة**\n\n💰 **السعر:** {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
+            return f"💰 **سعر الفضة:** {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
     
-    elif text.startswith("/alert"):
+    # تنبيه
+    if text.startswith("/alert"):
         parts = text.replace("/alert", "").strip().split()
         if len(parts) >= 2:
             symbol = parts[0].upper()
@@ -209,7 +193,7 @@ def handle(chat_id, text):
                 return "❌ خطأ. استخدم: /alert BTCUSD 100000 above"
         return "❌ استخدم: /alert BTCUSD 100000 above"
     
-    elif text == "/alerts":
+    if text == "/alerts":
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
         cursor.execute('SELECT symbol, price_level, alert_type FROM alerts WHERE chat_id = ? AND is_active = TRUE', (chat_id,))
@@ -217,25 +201,20 @@ def handle(chat_id, text):
         conn.close()
         
         if alerts:
-            response = "🔔 **تنبيهاتك النشطة:**\n\n"
+            response = "🔔 **تنبيهاتك:**\n\n"
             for symbol, price, alert_type in alerts:
                 response += f"• {symbol} عند {price} ({alert_type})\n"
             return response
-        return "لا توجد تنبيهات نشطة"
+        return "لا توجد تنبيهات"
     
-    elif text in ["/start", "/help"]:
+    if text in ["/start", "/help"]:
         return """🤖 **البوت الذكي**
 
 💰 **الأسعار:**
-/gold - الذهب
-/silver - الفضة
-/price BTC - بيتكوين
-/price ETH - إيثيريوم
-/price XAUUSD - ذهب
+اكتب: سعر الذهب / سعر الفضة / سعر بيتكوين
 
-🔔 **التنبيهات:**
+🔔 **تنبيه:**
 /alert BTCUSD 100000 above
-/alerts - تنبيهاتك
 
 💬 **أو اسألني أي سؤال!**"""
     
@@ -244,12 +223,7 @@ def handle(chat_id, text):
     if reply:
         return reply
     
-    # محاولة أخيرة - إذا النص فيه اسم عملة
-    price = get_price(text)
-    if price:
-        return f"💰 **{text.upper()}:** {price:.2f} دولار"
-    
-    return "اكتب /help لمعرفة الأوامر"
+    return "حدث خطأ. تأكد من GEMINI_API_KEY"
 
 def send_message(chat_id, text):
     try:
