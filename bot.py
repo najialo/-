@@ -9,8 +9,10 @@ import time
 app = Flask(__name__)
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
+GROK_API_KEY = os.environ.get("GROK_API_KEY", "")
 DATABASE_PATH = "trading_bot.db"
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
+GROK_API_URL = "https://api.x.ai/v1/chat/completions"
 
 def init_database():
     conn = sqlite3.connect(DATABASE_PATH)
@@ -22,7 +24,7 @@ def init_database():
 def get_realtime_price(symbol):
     symbol = symbol.upper()
     
-    if symbol in ["XAUUSD", "GOLD"]:
+    if symbol in ["XAUUSD", "GOLD", "ذهب"]:
         try:
             response = requests.get("https://api.gold-api.com/price/XAU", timeout=5)
             data = response.json()
@@ -31,7 +33,7 @@ def get_realtime_price(symbol):
         except:
             pass
     
-    elif symbol in ["XAGUSD", "SILVER"]:
+    elif symbol in ["XAGUSD", "SILVER", "فضة"]:
         try:
             response = requests.get("https://api.gold-api.com/price/XAG", timeout=5)
             data = response.json()
@@ -53,7 +55,19 @@ def get_realtime_price(symbol):
     try:
         binance_symbols = {
             "BTCUSD": "BTCUSDT",
-            "ETHUSD": "ETHUSDT"
+            "BTC": "BTCUSDT",
+            "بيتكوين": "BTCUSDT",
+            "ETHUSD": "ETHUSDT",
+            "ETH": "ETHUSDT",
+            "إيثيريوم": "ETHUSDT",
+            "SOLUSD": "SOLUSDT",
+            "SOL": "SOLUSDT",
+            "DOGEUSD": "DOGEUSDT",
+            "DOGE": "DOGEUSDT",
+            "BNBUSD": "BNBUSDT",
+            "BNB": "BNBUSDT",
+            "XRPUSD": "XRPUSDT",
+            "XRP": "XRPUSDT"
         }
         if symbol in binance_symbols:
             url = f"https://api.binance.com/api/v3/ticker/price?symbol={binance_symbols[symbol]}"
@@ -65,6 +79,35 @@ def get_realtime_price(symbol):
         pass
     
     return None
+
+def ask_grok(text):
+    if not GROK_API_KEY:
+        return None
+    
+    try:
+        response = requests.post(
+            GROK_API_URL,
+            headers={
+                "Authorization": f"Bearer {GROK_API_KEY}",
+                "Content-Type": "application/json"
+            },
+            json={
+                "model": "grok-beta",
+                "messages": [
+                    {"role": "system", "content": "أنت محلل مالي ذكي. أجب بالعربية. حلل الأسواق والذهب والعملات. أعط توقعات للصعود والهبوط."},
+                    {"role": "user", "content": text}
+                ],
+                "max_tokens": 1000
+            },
+            timeout=30,
+        )
+        data = response.json()
+        
+        if "choices" in data:
+            return data["choices"][0]["message"]["content"]
+        return None
+    except:
+        return None
 
 def check_alerts():
     while True:
@@ -79,10 +122,10 @@ def check_alerts():
                 
                 if current_price:
                     if alert_type == "above" and current_price >= price_level:
-                        send_telegram_message(chat_id, f"🔔 {symbol} وصل إلى {current_price:.2f}")
+                        send_telegram_message(chat_id, f"🔔 **تنبيه:** {symbol} وصل إلى {current_price:.2f} (فوق {price_level:.2f})")
                         cursor.execute('UPDATE alerts SET is_active = FALSE WHERE id = ?', (alert_id,))
                     elif alert_type == "below" and current_price <= price_level:
-                        send_telegram_message(chat_id, f"🔔 {symbol} وصل إلى {current_price:.2f}")
+                        send_telegram_message(chat_id, f"🔔 **تنبيه:** {symbol} وصل إلى {current_price:.2f} (تحت {price_level:.2f})")
                         cursor.execute('UPDATE alerts SET is_active = FALSE WHERE id = ?', (alert_id,))
             
             conn.commit()
@@ -93,20 +136,33 @@ def check_alerts():
         time.sleep(10)
 
 def handle_command(chat_id, text):
-    if text == "/gold":
-        price = get_realtime_price("XAUUSD")
-        return f"💰 الذهب: {price:.2f}" if price else "❌ خطأ"
     
-    elif text == "/silver":
+    if text == "/gold" or text == "سعر الذهب":
+        price = get_realtime_price("XAUUSD")
+        if price:
+            return f"📊 **الذهب**\n\n💰 **السعر:** {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
+    
+    elif text == "/silver" or text == "سعر الفضة":
         price = get_realtime_price("XAGUSD")
-        return f"💰 الفضة: {price:.2f}" if price else "❌ خطأ"
+        if price:
+            return f"📊 **الفضة**\n\n💰 **السعر:** {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
+    
+    elif text == "/btc" or text == "سعر بيتكوين":
+        price = get_realtime_price("BTCUSD")
+        if price:
+            return f"📊 **بيتكوين**\n\n💰 **السعر:** {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
+    
+    elif text == "/eth" or text == "سعر إيثيريوم":
+        price = get_realtime_price("ETHUSD")
+        if price:
+            return f"📊 **إيثيريوم**\n\n💰 **السعر:** {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
     
     elif text.startswith("/price"):
         symbol = text.replace("/price", "").strip().upper()
         if symbol:
             price = get_realtime_price(symbol)
             if price:
-                return f"💰 {symbol}: {price:.2f}"
+                return f"💰 **{symbol}:** {price:.2f} دولار"
             else:
                 return "❌ لا يمكن الحصول على السعر"
     
@@ -125,9 +181,10 @@ def handle_command(chat_id, text):
                 conn.commit()
                 conn.close()
                 
-                return f"✅ تنبيه: {symbol} عند {price}"
+                return f"✅ **تم إضافة تنبيه:**\n• {symbol}\n• السعر: {price}\n• النوع: {alert_type}"
             except:
                 return "❌ خطأ في السعر"
+        return "استخدم: /alert XAUUSD 2500 above"
     
     elif text == "/alerts":
         conn = sqlite3.connect(DATABASE_PATH)
@@ -137,20 +194,34 @@ def handle_command(chat_id, text):
         conn.close()
         
         if alerts:
-            response = "🔔 تنبيهاتك:\n\n"
+            response = "🔔 **تنبيهاتك:**\n\n"
             for symbol, price, alert_type in alerts:
-                response += f"• {symbol} عند {price}\n"
+                response += f"• {symbol} عند {price} ({alert_type})\n"
             return response
         return "لا توجد تنبيهات"
     
     elif text in ["/start", "/help"]:
-        return """🤖 بوت الأسعار والتنبيهات
+        return """🤖 **بوت التحليل المالي**
 
-/gold - سعر الذهب
-/silver - سعر الفضة
-/price XAUUSD - سعر لحظي
-/alert XAUUSD 2500 above - تنبيه
-/alerts - تنبيهاتك"""
+📊 **الأسعار:**
+/gold - الذهب
+/silver - الفضة
+/btc - بيتكوين
+/eth - إيثيريوم
+/price XAUUSD - سعر محدد
+
+🔔 **التنبيهات:**
+/alert XAUUSD 2500 above
+/alerts
+
+💬 **أو اسألني:**
+- تحليل الذهب
+- هل الذهب رح يطلع؟
+- ما توقعاتك للبيتكوين؟"""
+    
+    reply = ask_grok(text)
+    if reply:
+        return reply
     
     return None
 
