@@ -1,5 +1,4 @@
 import os
-import json
 import requests
 from datetime import datetime
 from flask import Flask, request, jsonify
@@ -9,37 +8,20 @@ import time
 
 app = Flask(__name__)
 
-# ==================== الإعدادات ====================
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
 DATABASE_PATH = "trading_bot.db"
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
 
-# ==================== قاعدة البيانات ====================
 def init_database():
     conn = sqlite3.connect(DATABASE_PATH)
     cursor = conn.cursor()
-    
-    cursor.execute('''
-        CREATE TABLE IF NOT EXISTS alerts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            chat_id INTEGER,
-            symbol TEXT,
-            price_level REAL,
-            alert_type TEXT,
-            is_active BOOLEAN DEFAULT TRUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    ''')
-    
+    cursor.execute('''CREATE TABLE IF NOT EXISTS alerts (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER, symbol TEXT, price_level REAL, alert_type TEXT, is_active BOOLEAN DEFAULT TRUE, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
     conn.commit()
     conn.close()
 
-# ==================== الأسعار اللحظية ====================
-def get_realtime_price(symbol: str):
-    """الحصول على سعر لحظي"""
+def get_realtime_price(symbol):
     symbol = symbol.upper()
     
-    # الذهب
     if symbol in ["XAUUSD", "GOLD"]:
         try:
             response = requests.get("https://api.gold-api.com/price/XAU", timeout=5)
@@ -49,7 +31,6 @@ def get_realtime_price(symbol: str):
         except:
             pass
     
-    # الفضة
     elif symbol in ["XAGUSD", "SILVER"]:
         try:
             response = requests.get("https://api.gold-api.com/price/XAG", timeout=5)
@@ -59,7 +40,6 @@ def get_realtime_price(symbol: str):
         except:
             pass
     
-    # العملات
     elif len(symbol) == 6:
         try:
             url = f"https://api.frankfurter.app/latest?from={symbol[:3]}&to={symbol[3:]}"
@@ -70,11 +50,10 @@ def get_realtime_price(symbol: str):
         except:
             pass
     
-    # العملات الرقمية
     try:
         binance_symbols = {
             "BTCUSD": "BTCUSDT",
-            "ETHUSD": "ETHUSDT",
+            "ETHUSD": "ETHUSDT"
         }
         if symbol in binance_symbols:
             url = f"https://api.binance.com/api/v3/ticker/price?symbol={binance_symbols[symbol]}"
@@ -87,9 +66,7 @@ def get_realtime_price(symbol: str):
     
     return None
 
-# ==================== نظام التنبيهات ====================
 def check_alerts():
-    """فحص التنبيهات"""
     while True:
         try:
             conn = sqlite3.connect(DATABASE_PATH)
@@ -115,8 +92,7 @@ def check_alerts():
         
         time.sleep(10)
 
-# ==================== الأوامر ====================
-def handle_command(chat_id: int, text: str):
+def handle_command(chat_id, text):
     if text == "/gold":
         price = get_realtime_price("XAUUSD")
         return f"💰 الذهب: {price:.2f}" if price else "❌ خطأ"
@@ -178,8 +154,7 @@ def handle_command(chat_id: int, text: str):
     
     return None
 
-# ==================== Telegram ====================
-def send_telegram_message(chat_id: int, text: str):
+def send_telegram_message(chat_id, text):
     try:
         requests.post(
             f"{TELEGRAM_API_URL}/sendMessage",
