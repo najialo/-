@@ -112,22 +112,22 @@ def handle(chat_id, text):
     if text == "/gold":
         price = get_price("XAUUSD")
         if price:
-            return f"💰 سعر الذهب: {price:.2f} دولار"
+            return f"📊 تحليل الذهب\n\n💰 السعر: {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
     
     elif text == "/silver":
         price = get_price("XAGUSD")
         if price:
-            return f"💰 سعر الفضة: {price:.2f} دولار"
+            return f"📊 تحليل الفضة\n\n💰 السعر: {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
     
     elif text == "/btc":
         price = get_price("BTCUSD")
         if price:
-            return f"💰 سعر بيتكوين: {price:.2f} دولار"
+            return f"📊 تحليل بيتكوين\n\n💰 السعر: {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
     
     elif text == "/eth":
         price = get_price("ETHUSD")
         if price:
-            return f"💰 سعر إيثيريوم: {price:.2f} دولار"
+            return f"📊 تحليل إيثيريوم\n\n💰 السعر: {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
     
     elif text.startswith("/price"):
         symbol = text.replace("/price", "").strip().upper()
@@ -135,6 +135,20 @@ def handle(chat_id, text):
             price = get_price(symbol)
             if price:
                 return f"💰 {symbol}: {price:.2f}"
+    
+    elif text.startswith("/forex"):
+        pair = text.replace("/forex", "").strip().upper()
+        if pair:
+            price = get_price(pair)
+            if price:
+                return f"💰 {pair}: {price:.2f}"
+    
+    elif text.startswith("/analysis"):
+        symbol = text.replace("/analysis", "").strip().upper()
+        if symbol:
+            price = get_price(symbol)
+            if price:
+                return f"📊 تحليل {symbol}\n\n💰 السعر: {price:.2f}"
     
     elif text.startswith("/alert"):
         parts = text.replace("/alert", "").strip().split()
@@ -151,39 +165,47 @@ def handle(chat_id, text):
                 conn.commit()
                 conn.close()
                 
-                return f"✅ تنبيه: {symbol} عند {price} ({alert_type})"
+                return f"✅ تم إضافة تنبيه:\n• {symbol}\n• السعر: {price}\n• النوع: {alert_type}"
             except:
                 pass
-        return "استخدم: /alert BTCUSD 100000 above"
+        return "استخدم: /alert XAUUSD 2500 above"
     
     elif text == "/alerts":
         conn = sqlite3.connect(DATABASE_PATH)
         cursor = conn.cursor()
-        cursor.execute('SELECT symbol, price_level FROM alerts WHERE chat_id = ? AND is_active = TRUE', (chat_id,))
+        cursor.execute('SELECT symbol, price_level, alert_type FROM alerts WHERE chat_id = ? AND is_active = TRUE', (chat_id,))
         alerts = cursor.fetchall()
         conn.close()
         
         if alerts:
-            return "🔔 تنبيهاتك:\n" + "\n".join([f"• {s} عند {p}" for s, p in alerts])
-        return "لا توجد تنبيهات"
+            response = "🔔 تنبيهاتك النشطة:\n\n"
+            for symbol, price, alert_type in alerts:
+                response += f"• {symbol} عند {price} ({alert_type})\n"
+            return response
+        return "لا توجد تنبيهات نشطة"
     
     elif text in ["/start", "/help"]:
         return """🤖 بوت التحليل المالي
 
 📊 التحليل:
-/gold - الذهب
-/silver - الفضة
-/btc - بيتكوين
-/eth - إيثيريوم
+/gold - تحليل الذهب
+/silver - تحليل الفضة
+/btc - تحليل بيتكوين
+/eth - تحليل إيثيريوم
+/forex EURUSD - تحليل عملات
+/analysis XAUUSD - تحليل مخصص
 
 💰 الأسعار:
-/price XAUUSD
+/price XAUUSD - سعر لحظي
 
 🔔 التنبيهات:
-/alert XAUUSD 2500 above
-/alerts
+/alert XAUUSD 2500 above - تنبيه سعر
+/alerts - عرض التنبيهات
 
-💬 أو اسألني أي سؤال"""
+💡 أمثلة:
+/gold
+/price XAUUSD
+/alert XAUUSD 2500 above"""
     
     reply = ask_gemini(text)
     if reply:
