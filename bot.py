@@ -22,11 +22,9 @@ def init_db():
     conn.commit()
     conn.close()
 
-# ========== الأسعار ==========
 def get_price(symbol):
     symbol = symbol.upper().strip()
     
-    # ذهب وفضة
     if symbol in ["XAUUSD", "GOLD", "ذهب", "الذهب"]:
         try:
             r = requests.get("https://api.gold-api.com/price/XAU", timeout=5)
@@ -41,7 +39,6 @@ def get_price(symbol):
         except:
             pass
     
-    # عملات رقمية
     crypto = {
         "BTC": "BTCUSDT", "BTCUSD": "BTCUSDT", "بيتكوين": "BTCUSDT",
         "ETH": "ETHUSDT", "ETHUSD": "ETHUSDT", "إيثيريوم": "ETHUSDT",
@@ -95,106 +92,8 @@ def get_price(symbol):
         except:
             pass
     
-    # عملات أجنبية
-    forex_map = {
-        "EURUSD": "EUR", "GBPUSD": "GBP", "USDJPY": "JPY",
-        "USDCHF": "CHF", "USDCAD": "CAD", "AUDUSD": "AUD",
-        "NZDUSD": "NZD"
-    }
-    
-    if symbol in forex_map:
-        try:
-            r = requests.get("https://open.er-api.com/v6/latest/USD", timeout=5)
-            data = r.json()
-            if "rates" in data:
-                return float(data["rates"][forex_map[symbol]])
-        except:
-            pass
-    
     return None
 
-# ========== تحليل فني ==========
-def get_analysis(symbol):
-    price = get_price(symbol)
-    if not price:
-        return None
-    
-    # بيانات تاريخية من Binance
-    try:
-        crypto = {
-            "XAUUSD": "PAXGUSDT", "BTCUSD": "BTCUSDT", "ETHUSD": "ETHUSDT",
-            "SOLUSD": "SOLUSDT", "DOGEUSD": "DOGEUSDT"
-        }
-        bin_symbol = crypto.get(symbol, symbol.replace("USD", "USDT"))
-        
-        r = requests.get(f"https://api.binance.com/api/v3/klines?symbol={bin_symbol}&interval=1h&limit=50", timeout=5)
-        klines = r.json()
-        
-        closes = [float(k[4]) for k in klines]
-        highs = [float(k[2]) for k in klines]
-        lows = [float(k[3]) for k in klines]
-        
-        # RSI
-        changes = [closes[i] - closes[i-1] for i in range(1, len(closes))]
-        gains = [max(c, 0) for c in changes[-14:]]
-        losses = [max(-c, 0) for c in changes[-14:]]
-        avg_gain = sum(gains) / 14
-        avg_loss = sum(losses) / 14
-        
-        rsi = 50
-        if avg_loss != 0:
-            rs = avg_gain / avg_loss
-            rsi = 100 - (100 / (1 + rs))
-        elif avg_gain > 0:
-            rsi = 100
-        
-        # المتوسطات
-        ma20 = sum(closes[-20:]) / 20
-        ma50 = sum(closes[-50:]) / 50 if len(closes) >= 50 else ma20
-        
-        # دعم ومقاومة
-        resistance = max(highs[-20:])
-        support = min(lows[-20:])
-        
-        # توصية
-        signal = "محايد ⚖️"
-        if rsi < 30 and price > ma20:
-            signal = "شراء قوي 🟢"
-        elif rsi < 40 and price > ma20:
-            signal = "شراء 🟢"
-        elif rsi > 70 and price < ma20:
-            signal = "بيع قوي 🔴"
-        elif rsi > 60 and price < ma20:
-            signal = "بيع 🔴"
-        elif price > ma20 and ma20 > ma50:
-            signal = "اتجاه صاعد 📈"
-        elif price < ma20 and ma20 < ma50:
-            signal = "اتجاه هابط 📉"
-        
-        analysis = f"""
-📊 **تحليل {symbol}**
-
-💰 **السعر:** {price:.2f}
-⚡ **التحديث:** {datetime.now().strftime('%H:%M:%S')}
-
-📈 **المؤشرات:**
-• RSI: {rsi:.1f}
-• MA20: {ma20:.2f}
-• MA50: {ma50:.2f}
-
-🎯 **المستويات:**
-• مقاومة: {resistance:.2f}
-• دعم: {support:.2f}
-
-💡 **التوصية:**
-{signal}
-"""
-        return analysis
-        
-    except:
-        return f"💰 **{symbol}:** {price:.2f}"
-
-# ========== Grok ==========
 def ask_grok(text):
     if not GROK_API_KEY:
         return None
@@ -206,7 +105,7 @@ def ask_grok(text):
             json={
                 "model": "grok-beta",
                 "messages": [
-                    {"role": "system", "content": "أنت محلل مالي محترف. حلل الأسواق وأعط توصيات واضحة. أجب بالعربية."},
+                    {"role": "system", "content": "أنت محلل مالي. أجب بالعربية. أعط توصيات واضحة."},
                     {"role": "user", "content": text}
                 ],
                 "max_tokens": 800
@@ -220,7 +119,6 @@ def ask_grok(text):
     except:
         return None
 
-# ========== التنبيهات ==========
 def check_alerts():
     while True:
         try:
@@ -244,22 +142,22 @@ def check_alerts():
             pass
         time.sleep(10)
 
-# ========== الردود ==========
 def handle(chat_id, text):
     t = text.strip()
     
-    # تنبيه سهل
     if any(word in t for word in ["نبيه", "نبهني", "خبرني", "قلي", "علمني"]):
         numbers = re.findall(r'\d+\.?\d*', t)
         
         symbol = "XAUUSD"
-        for key, val in [("فضة", "XAGUSD"), ("بيتكوين", "BTCUSD"), ("إيثيريوم", "ETHUSD"), ("سولانا", "SOLUSD")]:
-            if key in t:
-                symbol = val
+        if "فضة" in t: symbol = "XAGUSD"
+        elif "بيتكوين" in t: symbol = "BTCUSD"
+        elif "إيثيريوم" in t: symbol = "ETHUSD"
+        elif "سولانا" in t: symbol = "SOLUSD"
+        elif "دوج" in t: symbol = "DOGEUSD"
         
         if numbers:
             price = float(numbers[0])
-            type = "below" if any(w in t for w in ["نزل", "تحت", "below"]) else "above"
+            type = "below" if any(w in t for w in ["نزل", "تحت"]) else "above"
             
             conn = sqlite3.connect(DATABASE_PATH)
             c = conn.cursor()
@@ -269,45 +167,48 @@ def handle(chat_id, text):
             
             return f"✅ تمام! رح نبعتلك لما {symbol} يوصل {price}"
     
-    # تحليل
-    if "تحليل" in t or "توصية" in t or "توقع" in t or "طلوع" in t or "نزول" in t:
-        if "ذهب" in t:
-            return get_analysis("XAUUSD")
-        elif "فضة" in t:
-            return get_analysis("XAGUSD")
-        elif "بيتكوين" in t or "btc" in t.lower():
-            return get_analysis("BTCUSD")
-        elif "إيثيريوم" in t or "eth" in t.lower():
-            return get_analysis("ETHUSD")
-        elif "سولانا" in t or "sol" in t.lower():
-            return get_analysis("SOLUSD")
-        else:
-            reply = ask_grok(t)
-            if reply:
-                return reply
+    if "ذهب" in t:
+        p = get_price("XAUUSD")
+        if p:
+            if any(w in t for w in ["تحليل", "توقع", "توصية", "طلع", "نزل"]):
+                reply = ask_grok(f"حلل الذهب XAUUSD سعره الحالي {p} دولار. هل سيطلع أم ينزل؟ أعط توصية واضحة.")
+                if reply:
+                    return f"📊 **تحليل الذهب**\n💰 السعر: {p:.2f}\n\n{reply}"
+            return f"💰 الذهب: {p:.2f} دولار"
     
-    # أسعار
-    if "سعر" in t or "كم" in t:
-        if "ذهب" in t:
-            p = get_price("XAUUSD")
-            if p: return f"💰 الذهب: {p:.2f} دولار"
-        elif "فضة" in t:
-            p = get_price("XAGUSD")
-            if p: return f"💰 الفضة: {p:.2f} دولار"
-        elif "بيتكوين" in t or "btc" in t.lower():
-            p = get_price("BTCUSD")
-            if p: return f"💰 بيتكوين: {p:.2f} دولار"
-        elif "إيثيريوم" in t or "eth" in t.lower():
-            p = get_price("ETHUSD")
-            if p: return f"💰 إيثيريوم: {p:.2f} دولار"
-        elif "سولانا" in t or "sol" in t.lower():
-            p = get_price("SOLUSD")
-            if p: return f"💰 سولانا: {p:.2f} دولار"
-        elif "دوج" in t or "doge" in t.lower():
-            p = get_price("DOGEUSD")
-            if p: return f"💰 دوجكوين: {p:.2f} دولار"
+    if "فضة" in t:
+        p = get_price("XAGUSD")
+        if p:
+            if any(w in t for w in ["تحليل", "توقع", "توصية", "طلع", "نزل"]):
+                reply = ask_grok(f"حلل الفضة XAGUSD سعرها الحالي {p} دولار. هل ستطلع أم تنزل؟ أعط توصية واضحة.")
+                if reply:
+                    return f"📊 **تحليل الفضة**\n💰 السعر: {p:.2f}\n\n{reply}"
+            return f"💰 الفضة: {p:.2f} دولار"
     
-    # أوامر
+    if "بيتكوين" in t or "btc" in t.lower():
+        p = get_price("BTCUSD")
+        if p:
+            if any(w in t for w in ["تحليل", "توقع", "توصية", "طلع", "نزل"]):
+                reply = ask_grok(f"حلل بيتكوين BTC سعرها الحالي {p} دولار. هل ستطلع أم تنزل؟ أعط توصية واضحة.")
+                if reply:
+                    return f"📊 **تحليل بيتكوين**\n💰 السعر: {p:.2f}\n\n{reply}"
+            return f"💰 بيتكوين: {p:.2f} دولار"
+    
+    if "إيثيريوم" in t or "eth" in t.lower():
+        p = get_price("ETHUSD")
+        if p:
+            return f"💰 إيثيريوم: {p:.2f} دولار"
+    
+    if "سولانا" in t or "sol" in t.lower():
+        p = get_price("SOLUSD")
+        if p:
+            return f"💰 سولانا: {p:.2f} دولار"
+    
+    if "دوج" in t or "doge" in t.lower():
+        p = get_price("DOGEUSD")
+        if p:
+            return f"💰 دوجكوين: {p:.2f} دولار"
+    
     if t == "/alerts":
         conn = sqlite3.connect(DATABASE_PATH)
         c = conn.cursor()
