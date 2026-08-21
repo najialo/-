@@ -18,7 +18,8 @@ GROK_API_URL = "https://api.x.ai/v1/chat/completions"
 def init_db():
     conn = sqlite3.connect(DATABASE_PATH)
     c = conn.cursor()
-    c.execute('''CREATE TABLE IF NOT EXISTS alerts (id INTEGER PRIMARY KEY, chat_id INTEGER, symbol TEXT, price REAL, alert_type TEXT, active INTEGER DEFAULT 1)''')
+    c.execute('''CREATE TABLE IF NOT EXISTS alerts 
+                 (id INTEGER PRIMARY KEY AUTOINCREMENT, chat_id INTEGER, symbol TEXT, price REAL, alert_type TEXT, active INTEGER DEFAULT 1)''')
     conn.commit()
     conn.close()
 
@@ -29,14 +30,14 @@ def get_price(symbol):
         try:
             r = requests.get("https://api.gold-api.com/price/XAU", timeout=5)
             return float(r.json()["price"])
-        except:
+        except Exception:
             pass
     
     if symbol in ["XAGUSD", "SILVER", "فضة", "الفضة"]:
         try:
             r = requests.get("https://api.gold-api.com/price/XAG", timeout=5)
             return float(r.json()["price"])
-        except:
+        except Exception:
             pass
     
     crypto = {
@@ -89,7 +90,7 @@ def get_price(symbol):
         try:
             r = requests.get(f"https://api.binance.com/api/v3/ticker/price?symbol={crypto[symbol]}", timeout=5)
             return float(r.json()["price"])
-        except:
+        except Exception:
             pass
     
     return None
@@ -103,9 +104,9 @@ def ask_grok(text):
             GROK_API_URL,
             headers={"Authorization": f"Bearer {GROK_API_KEY}", "Content-Type": "application/json"},
             json={
-                "model": "grok-beta",
+                "model": "grok-2-latest",
                 "messages": [
-                    {"role": "system", "content": "أنت محلل مالي. أجب بالعربية. أعط توصيات واضحة."},
+                    {"role": "system", "content": "أنت محلل مالي احترافي. أجب بالعربية دائماً بتنسيق واضح وتوصياتددقيقة."},
                     {"role": "user", "content": text}
                 ],
                 "max_tokens": 800
@@ -113,11 +114,23 @@ def ask_grok(text):
             timeout=30
         )
         data = r.json()
-        if "choices" in data:
+        if "choices" in data and len(data["choices"]) > 0:
             return data["choices"][0]["message"]["content"]
         return None
-    except:
+    except Exception:
         return None
+
+def send(chat_id, text):
+    if not TELEGRAM_TOKEN:
+        return
+    try:
+        requests.post(
+            f"{TELEGRAM_API_URL}/sendMessage", 
+            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}, 
+            timeout=10
+        )
+    except Exception:
+        pass
 
 def check_alerts():
     while True:
@@ -130,17 +143,17 @@ def check_alerts():
                 current = get_price(symbol)
                 if current:
                     if alert_type == "above" and current >= price:
-                        send(chat_id, f"🔔 {symbol} وصل {current:.2f}")
+                        send(chat_id, f"🔔 **تنبيه السعر!**\nوصل {symbol} إلى {current:.2f}")
                         c.execute('UPDATE alerts SET active = 0 WHERE id = ?', (alert_id,))
                     elif alert_type == "below" and current <= price:
-                        send(chat_id, f"🔔 {symbol} وصل {current:.2f}")
+                        send(chat_id, f"🔔 **تنبيه السعر!**\nوصل {symbol} إلى {current:.2f}")
                         c.execute('UPDATE alerts SET active = 0 WHERE id = ?', (alert_id,))
             
             conn.commit()
             conn.close()
-        except:
+        except Exception:
             pass
-        time.sleep(10)
+        time.sleep(15)
 
 def handle(chat_id, text):
     t = text.strip()
@@ -150,10 +163,10 @@ def handle(chat_id, text):
         
         symbol = "XAUUSD"
         if "فضة" in t: symbol = "XAGUSD"
-        elif "بيتكوين" in t: symbol = "BTCUSD"
-        elif "إيثيريوم" in t: symbol = "ETHUSD"
-        elif "سولانا" in t: symbol = "SOLUSD"
-        elif "دوج" in t: symbol = "DOGEUSD"
+        elif "بيتكوين" in t or "btc" in t.lower(): symbol = "BTCUSD"
+        elif "إيثيريوم" in t or "eth" in t.lower(): symbol = "ETHUSD"
+        elif "سولانا" in t or "sol" in t.lower(): symbol = "SOLUSD"
+        elif "دوج" in t or "doge" in t.lower(): symbol = "DOGEUSD"
         
         if numbers:
             price = float(numbers[0])
@@ -165,7 +178,7 @@ def handle(chat_id, text):
             conn.commit()
             conn.close()
             
-            return f"✅ تمام! رح نبعتلك لما {symbol} يوصل {price}"
+            return f"✅ **تم ضبط التنبيه!**\nسيتم إشعاراتك عند وصول {symbol} إلى {price}"
     
     if "ذهب" in t:
         p = get_price("XAUUSD")
@@ -173,13 +186,13 @@ def handle(chat_id, text):
             if any(w in t for w in ["تحليل", "توقع", "توصية", "طلع", "نزل"]):
                 reply = ask_grok(f"حلل الذهب XAUUSD سعره الحالي {p} دولار. هل سيطلع أم ينزل؟ أعط توصية واضحة.")
                 if reply:
-                    return f"📊 **تحليل الذهب**\n💰 السعر: {p:.2f}\n\n{reply}"
-            return f"💰 الذهب: {p:.2f} دولار"
+                    return f"📊 **تحليل الذهب**\n💰 السعر الحالي: {p:.2f} دولار\n\n{reply}"
+            return f"💰 **سعر الذهب:** {p:.2f} دولار"
     
     if "فضة" in t:
         p = get_price("XAGUSD")
         if p:
-            return f"💰 الفضة: {p:.2f} دولار"
+            return f"💰 **سعر الفضة:** {p:.2f} دولار"
     
     if "بيتكوين" in t or "btc" in t.lower():
         p = get_price("BTCUSD")
@@ -187,23 +200,23 @@ def handle(chat_id, text):
             if any(w in t for w in ["تحليل", "توقع", "توصية", "طلع", "نزل"]):
                 reply = ask_grok(f"حلل بيتكوين BTC سعرها الحالي {p} دولار. هل ستطلع أم تنزل؟ أعط توصية واضحة.")
                 if reply:
-                    return f"📊 **تحليل بيتكوين**\n💰 السعر: {p:.2f}\n\n{reply}"
-            return f"💰 بيتكوين: {p:.2f} دولار"
+                    return f"📊 **تحليل بيتكوين**\n💰 السعر الحالي: {p:.2f} دولار\n\n{reply}"
+            return f"💰 **سعر بيتكوين:** {p:.2f} دولار"
     
     if "إيثيريوم" in t or "eth" in t.lower():
         p = get_price("ETHUSD")
         if p:
-            return f"💰 إيثيريوم: {p:.2f} دولار"
+            return f"💰 **سعر إيثيريوم:** {p:.2f} دولار"
     
     if "سولانا" in t or "sol" in t.lower():
         p = get_price("SOLUSD")
         if p:
-            return f"💰 سولانا: {p:.2f} دولار"
+            return f"💰 **سعر سولانا:** {p:.2f} دولار"
     
     if "دوج" in t or "doge" in t.lower():
         p = get_price("DOGEUSD")
         if p:
-            return f"💰 دوجكوين: {p:.2f} دولار"
+            return f"💰 **سعر دوجكوين:** {p:.2f} دولار"
     
     if t == "/alerts":
         conn = sqlite3.connect(DATABASE_PATH)
@@ -213,34 +226,32 @@ def handle(chat_id, text):
         conn.close()
         
         if alerts:
-            return "🔔 تنبيهاتك:\n" + "\n".join([f"• {s} عند {p}" for s, p, t in alerts])
-        return "لا توجد تنبيهات"
+            return "🔔 **تنبيهاتك النشطة:**\n" + "\n".join([f"• {s} عند {p}" for s, p, _ in alerts])
+        return "لا توجد تنبيهات نشطة حالياً."
     
     if t in ["/start", "/help"]:
-        return """🤖 **بوت التحليل الشامل**
+        return """🤖 **بوت التحليل المالي والأسعار**
 
-💰 **اكتب:**
-سعر الذهب / سعر بيتكوين
+💰 **لمعرفة السعر:**
+• سعر الذهب / سعر بيتكوين
 
-📊 **تحليل:**
-تحليل الذهب / تحليل بيتكوين
+📊 **للتحليل الفني:**
+• تحليل الذهب / تحليل بيتكوين
 
-🔔 **تنبيه:**
-نبهني على الذهب 2500
+🔔 **لإضافة تنبيه سعر:**
+• نبهني على الذهب 2500
+• نبهني على بيتكوين تحت 60000
 
-💬 **أو اسألني أي سؤال**"""
+📋 **عرض التنبيهات:**
+• /alerts
+
+💬 **أو اسألني أي سؤال مالي مباشرة!**"""
     
     reply = ask_grok(t)
     if reply:
         return reply
     
-    return None
-
-def send(chat_id, text):
-    try:
-        requests.post(f"{TELEGRAM_API_URL}/sendMessage", json={"chat_id": chat_id, "text": text}, timeout=10)
-    except:
-        pass
+    return "عذراً، لم أتمكن من معالجة الطلب."
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
@@ -266,4 +277,5 @@ def health():
 if __name__ == "__main__":
     init_db()
     threading.Thread(target=check_alerts, daemon=True).start()
-    app.run()
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port)
