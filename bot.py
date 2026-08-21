@@ -9,10 +9,10 @@ import time
 app = Flask(__name__)
 
 TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN")
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "")
+GROK_API_KEY = os.environ.get("GROK_API_KEY", "")
 DATABASE_PATH = "trading_bot.db"
 TELEGRAM_API_URL = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}"
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+GROK_API_URL = "https://api.x.ai/v1/chat/completions"
 
 def init_database():
     conn = sqlite3.connect(DATABASE_PATH)
@@ -24,31 +24,27 @@ def init_database():
 def get_price(symbol):
     symbol = symbol.upper().strip()
     
-    if symbol in ["XAUUSD", "GOLD"]:
+    if symbol in ["XAUUSD", "GOLD", "ذهب"]:
         try:
             r = requests.get("https://api.gold-api.com/price/XAU", timeout=5)
             return float(r.json()["price"])
         except:
             pass
-    elif symbol in ["XAGUSD", "SILVER"]:
+    elif symbol in ["XAGUSD", "SILVER", "فضة"]:
         try:
             r = requests.get("https://api.gold-api.com/price/XAG", timeout=5)
             return float(r.json()["price"])
         except:
             pass
-    elif len(symbol) == 6:
-        try:
-            r = requests.get(f"https://api.frankfurter.app/latest?from={symbol[:3]}&to={symbol[3:]}", timeout=5)
-            return float(r.json()["rates"][symbol[3:]])
-        except:
-            pass
     
     try:
         binance_map = {
-            "BTCUSD": "BTCUSDT",
-            "ETHUSD": "ETHUSDT",
-            "SOLUSD": "SOLUSDT",
-            "DOGEUSD": "DOGEUSDT",
+            "BTCUSD": "BTCUSDT", "BTC": "BTCUSDT", "بيتكوين": "BTCUSDT",
+            "ETHUSD": "ETHUSDT", "ETH": "ETHUSDT", "إيثيريوم": "ETHUSDT",
+            "SOLUSD": "SOLUSDT", "SOL": "SOLUSDT",
+            "DOGEUSD": "DOGEUSDT", "DOGE": "DOGEUSDT",
+            "BNBUSD": "BNBUSDT", "BNB": "BNBUSDT",
+            "XRPUSD": "XRPUSDT", "XRP": "XRPUSDT",
         }
         if symbol in binance_map:
             r = requests.get(f"https://api.binance.com/api/v3/ticker/price?symbol={binance_map[symbol]}", timeout=5)
@@ -58,26 +54,31 @@ def get_price(symbol):
     
     return None
 
-def ask_gemini(text):
-    if not GEMINI_API_KEY:
+def ask_grok(text):
+    if not GROK_API_KEY:
         return None
     
     try:
         response = requests.post(
-            GEMINI_API_URL,
+            GROK_API_URL,
             headers={
-                "Authorization": f"Bearer {GEMINI_API_KEY}",
+                "Authorization": f"Bearer {GROK_API_KEY}",
                 "Content-Type": "application/json"
             },
             json={
-                "contents": [{"role": "user", "parts": [{"text": text}]}],
+                "model": "grok-beta",
+                "messages": [
+                    {"role": "system", "content": "أنت محلل مالي ذكي. أجب بالعربية. حلل الأسواق والذهب والعملات. أعط توقعات للصعود والهبوط."},
+                    {"role": "user", "content": text}
+                ],
+                "max_tokens": 1000
             },
             timeout=30,
         )
         data = response.json()
         
-        if response.status_code == 200 and "candidates" in data:
-            return data["candidates"][0]["content"]["parts"][0]["text"]
+        if "choices" in data:
+            return data["choices"][0]["message"]["content"]
         return None
     except:
         return None
@@ -95,10 +96,10 @@ def check_alerts():
                 
                 if current_price:
                     if alert_type == "above" and current_price >= price_level:
-                        send_message(chat_id, f"🔔 {symbol} وصل إلى {current_price:.2f}")
+                        send_message(chat_id, f"🔔 **تنبيه:** {symbol} وصل إلى {current_price:.2f} (فوق {price_level:.2f})")
                         cursor.execute('UPDATE alerts SET is_active = FALSE WHERE id = ?', (alert_id,))
                     elif alert_type == "below" and current_price <= price_level:
-                        send_message(chat_id, f"🔔 {symbol} وصل إلى {current_price:.2f}")
+                        send_message(chat_id, f"🔔 **تنبيه:** {symbol} وصل إلى {current_price:.2f} (تحت {price_level:.2f})")
                         cursor.execute('UPDATE alerts SET is_active = FALSE WHERE id = ?', (alert_id,))
             
             conn.commit()
@@ -109,46 +110,32 @@ def check_alerts():
 
 def handle(chat_id, text):
     
-    if text == "/gold":
+    if text == "/gold" or text == "سعر الذهب":
         price = get_price("XAUUSD")
         if price:
-            return f"📊 تحليل الذهب\n\n💰 السعر: {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
+            return f"📊 **الذهب**\n\n💰 **السعر:** {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
     
-    elif text == "/silver":
+    elif text == "/silver" or text == "سعر الفضة":
         price = get_price("XAGUSD")
         if price:
-            return f"📊 تحليل الفضة\n\n💰 السعر: {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
+            return f"📊 **الفضة**\n\n💰 **السعر:** {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
     
-    elif text == "/btc":
+    elif text == "/btc" or text == "سعر بيتكوين":
         price = get_price("BTCUSD")
         if price:
-            return f"📊 تحليل بيتكوين\n\n💰 السعر: {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
+            return f"📊 **بيتكوين**\n\n💰 **السعر:** {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
     
-    elif text == "/eth":
+    elif text == "/eth" or text == "سعر إيثيريوم":
         price = get_price("ETHUSD")
         if price:
-            return f"📊 تحليل إيثيريوم\n\n💰 السعر: {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
+            return f"📊 **إيثيريوم**\n\n💰 **السعر:** {price:.2f} دولار\n⚡ {datetime.now().strftime('%H:%M:%S')}"
     
     elif text.startswith("/price"):
         symbol = text.replace("/price", "").strip().upper()
         if symbol:
             price = get_price(symbol)
             if price:
-                return f"💰 {symbol}: {price:.2f}"
-    
-    elif text.startswith("/forex"):
-        pair = text.replace("/forex", "").strip().upper()
-        if pair:
-            price = get_price(pair)
-            if price:
-                return f"💰 {pair}: {price:.2f}"
-    
-    elif text.startswith("/analysis"):
-        symbol = text.replace("/analysis", "").strip().upper()
-        if symbol:
-            price = get_price(symbol)
-            if price:
-                return f"📊 تحليل {symbol}\n\n💰 السعر: {price:.2f}"
+                return f"💰 **{symbol}:** {price:.2f} دولار"
     
     elif text.startswith("/alert"):
         parts = text.replace("/alert", "").strip().split()
@@ -165,7 +152,7 @@ def handle(chat_id, text):
                 conn.commit()
                 conn.close()
                 
-                return f"✅ تم إضافة تنبيه:\n• {symbol}\n• السعر: {price}\n• النوع: {alert_type}"
+                return f"✅ **تم إضافة تنبيه:**\n• {symbol}\n• السعر: {price}\n• النوع: {alert_type}"
             except:
                 pass
         return "استخدم: /alert XAUUSD 2500 above"
@@ -178,36 +165,34 @@ def handle(chat_id, text):
         conn.close()
         
         if alerts:
-            response = "🔔 تنبيهاتك النشطة:\n\n"
+            response = "🔔 **تنبيهاتك:**\n\n"
             for symbol, price, alert_type in alerts:
                 response += f"• {symbol} عند {price} ({alert_type})\n"
             return response
-        return "لا توجد تنبيهات نشطة"
+        return "لا توجد تنبيهات"
     
     elif text in ["/start", "/help"]:
-        return """🤖 بوت التحليل المالي
+        return """🤖 **بوت التحليل المالي**
 
-📊 التحليل:
-/gold - تحليل الذهب
-/silver - تحليل الفضة
-/btc - تحليل بيتكوين
-/eth - تحليل إيثيريوم
-/forex EURUSD - تحليل عملات
-/analysis XAUUSD - تحليل مخصص
+📊 **التحليل:**
+/gold - الذهب
+/silver - الفضة
+/btc - بيتكوين
+/eth - إيثيريوم
 
-💰 الأسعار:
-/price XAUUSD - سعر لحظي
-
-🔔 التنبيهات:
-/alert XAUUSD 2500 above - تنبيه سعر
-/alerts - عرض التنبيهات
-
-💡 أمثلة:
-/gold
+💰 **الأسعار:**
 /price XAUUSD
-/alert XAUUSD 2500 above"""
+
+🔔 **التنبيهات:**
+/alert XAUUSD 2500 above
+/alerts
+
+💬 **أو اسألني:**
+- تحليل الذهب
+- هل الذهب رح يطلع؟
+- ما توقعاتك للبيتكوين؟"""
     
-    reply = ask_gemini(text)
+    reply = ask_grok(text)
     if reply:
         return reply
     
